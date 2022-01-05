@@ -1,4 +1,4 @@
-# Herramienta para LSB Práctica 2 (Pensado para los directorios de los ratones vehículo)
+# Herramienta para LSB Práctica 2 (Pensado para los directorios de los ratones vehículo=no-tratados)
 
 ### Modo de Uso:
 - Descargar carpeta y poner donde quieras
@@ -13,7 +13,7 @@ Ej: Estructura de carpetas que funciona por defecto:
         - analysis.py
         - analyze.bat
         - requirements.txt
-    + pata-derecha_tratados
+    + pata-derecha_no-tratados
         + basales
             - <Ficheros.txt de cada raton (da igual el nombre)>
             - ...
@@ -21,7 +21,7 @@ Ej: Estructura de carpetas que funciona por defecto:
             - ...
         + 2-semanas
             - ...
-    + pata-izquierda_tratados
+    + pata-izquierda_no-tratados
         <igual que el de pata derecha> 
         ...
     - <last_analysis.txt> (Cuando se realize algún análisis se guardará aquí)

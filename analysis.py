@@ -15,7 +15,7 @@ default_path = '../'
 # -------------------------------------------------------------------
 custom_path = None
 analisis_fname = 'last_analisis.txt'
-rigth_paw_dir = 'pata-derecha_tratados'; left_paw_dir = 'pata-izquierda_tratados'
+rigth_paw_dir = 'pata-derecha_no-tratados'; left_paw_dir = 'pata-izquierda_no-tratados'
 dir_basales = 'basales'; dir_72horas = '72-horas'; dir_2semanas = '2-semanas'
 # Stat headers
 mouse_header = "Raton"
