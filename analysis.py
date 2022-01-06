@@ -7,10 +7,12 @@ from pathlib import Path
 from shutil import copyfile
 
 # Dependencies
+from scipy import signal
 import numpy as np
 from tabulate import tabulate
 import matplotlib.pyplot as plt
 from openpyxl.workbook import Workbook
+from openpyxl.chart import ScatterChart, Reference, Series
 import openpyxl
 
 default_path = '../'; excel_template = 'excel_template.xlsx'
@@ -45,6 +47,8 @@ def main():
     print(f"[%] Analizando archivos de '{path}'")
     log(f" + Analysing '{path}'")
     analisis = {}
+    if os.path.exists(path/excel_pd_name): os.remove(path/excel_pd_name)
+    if os.path.exists(path/excel_pi_name): os.remove(path/excel_pi_name)
     for ipaw, paw in enumerate(paws_dir_names):
         log(f" => {paw}")
         analisis[paw] = {}; gcounter = 0
@@ -60,7 +64,7 @@ def main():
                 headers.append(h + " HI")
             table = [headers]
             fcounter = 0
-            for fname in files:
+            for ifile, fname in enumerate(files):
                 print(f"Analizando => '{fname}'...")
                 t = []; hd = []; hi = []
                 with open(grp_path/fname, 'r') as file:
@@ -95,6 +99,25 @@ def main():
                 for i, stat in enumerate(stats):
                     cell = letters[i]+str(counter+offset)
                     ws[cell] = stat
+                if grp == 'basales':
+                    chart_ws = Workbook.create_sheet(wb, title=f'Correlation-{ifile+1}')
+                    norm_hd = hd/np.linalg.norm(hd); norm_hi = hi/np.linalg.norm(hi)
+                    xcorr = list(np.correlate(norm_hd, norm_hi, 'full'))
+                    chart_ws.append(["Lags", "Cross Correlation"])
+                    # hd y hi pueden tener longitudes distintas segun cortemos ¿Sale bien la crosscorr?
+                    lags = signal.correlation_lags(norm_hd.size, norm_hi.size, mode="full")
+                    #lag = lags[np.argmax(correlation)]
+                    for lag, val in zip(lags, xcorr):
+                        chart_ws.append([lag, val])
+                    xvalues = Reference(chart_ws, min_col=1, min_row=2, max_row=len(lags))
+                    values = Reference(chart_ws, min_col=2, min_row=2, max_row=len(xcorr))
+                    series = Series(values, xvalues)
+                    chart = ScatterChart()
+                    chart.title = f"Correlacion Cruzada '{fname}'"
+                    chart.x_axis.title = "Lags"
+                    chart.y_axis.title = "Cross Correlation"
+                    chart.series.append(series)
+                    chart_ws.add_chart(chart, 'D2')
                 wb.save(path/excel_path)
                 # Argumento para plotear
                 if '-s' in sys.argv:
@@ -165,8 +188,6 @@ def calc_stats(t:list, array:list) -> list:
     # Area absoluta
     area = np.trapz(np.abs(array), dx=abs(t[1]-t[0]))
     stats.append(round(area,8))
-    # Fatan algunas estadísticas
-    ...
     
     return stats
 
@@ -178,5 +199,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("[!] Exit")
         exit(1)
-    except Exception as err:
-        print(f"[!] Unexpected Error: {err}")
+    # except Exception as err:
+    #     print(f"[!] Unexpected Error: {err}")
