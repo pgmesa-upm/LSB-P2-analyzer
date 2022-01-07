@@ -142,7 +142,11 @@ def main():
                 if grp == dir_basales:
                     # Calculamos correlacion de Pearson
                     print("   - Calculando Coeficinete de Pearson...")
-                    pearson = np.cov(hd,hi)[0][1]/(np.std(hd)*np.std(hi))
+                    normalized_hd = normalize(np.array(hd)); normalized_hi = normalize(np.array(hi))
+                    assert max(normalized_hd) <= 1 and min(normalized_hd) >= 0 
+                    pearson = np.cov(normalized_hd,normalized_hi)[0][1]/(np.std(normalized_hd)*np.std(normalized_hi))
+                    # Guardamos las normalizaciones
+                    save_data(t, normalized_hd, normalized_hi, analysis_path/norm_dir_name, f"{paw}/{grp}/{(fname.replace('.', '_norm.'))}", headers=txt_headers)
                     stats.append(pearson)
                 table.append(stats)
                 print(f"   - Actualizando excel...")
@@ -159,15 +163,10 @@ def main():
                     cell = letters[i-1]+str(counter+offset)
                     ws[cell] = stat
                 if grp == dir_basales:
-                    # Normalizamos la señal
-                    print(f"   - Normalizando la señal...")
                     # ¿ norm_hd = normalize(np.array(hd)); norm_hi = normalize(np.array(hi)) ?
-                    # assert max(norm_hd) <= 1 and min(norm_hi) >= 0 
-                    norm_hd = hd/np.linalg.norm(hd); norm_hi = hi/np.linalg.norm(hi)
-                    # Guardamos las normalizaciones
-                    save_data(t, norm_hd, norm_hi, analysis_path/norm_dir_name, f"{paw}/{grp}/{(fname.replace('.', '_norm.'))}", headers=txt_headers)
                     # Realizamos la correlacion cruzada entre hemisferios
                     print(f"   - Realizando Correlacion Cruzada...")
+                    norm_hd = hd/np.linalg.norm(hd); norm_hi = hi/np.linalg.norm(hi)
                     chart_ws = Workbook.create_sheet(wb, title=f'Correlation-{ifile+1}')
                     xcorr = list(signal.correlate(norm_hd, norm_hi))
                     chart_ws.append(["Lags", "Cross Correlation"])
