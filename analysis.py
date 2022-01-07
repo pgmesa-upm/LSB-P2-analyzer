@@ -197,7 +197,7 @@ def main():
                 fcounter += 3
             gcounter += 1
             log(tabulate(table, headers='firstrow', tablefmt='fancy_grid', numalign='center'))
-    print(f"[%] Se ha creado '/{analysis_fname}'")
+    print(f"[%] Se ha creado '/{analysis_dir_name}'")
     print("[%] Fin del analisis")
     
 def log(msg:str):
