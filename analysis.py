@@ -3,6 +3,8 @@
 import os
 import sys
 import csv
+from time import time as get_time
+from math import floor
 from pathlib import Path
 from shutil import copyfile
 
@@ -19,16 +21,28 @@ default_path = '../'; excel_template = 'excel_template.xlsx'
 # ------------------------- Custom Settings -------------------------
 # -------------------------------------------------------------------
 custom_path = None
-analisis_fname = 'last_analisis.txt'
-excel_pd_name = 'stats_vehiculo_PD.xlsx'
-excel_pi_name = 'stats_vehiculo_PI.xlsx'
-rigth_paw_dir = 'pata-derecha_no-tratados'; left_paw_dir = 'pata-izquierda_no-tratados'
+# Nombre directorios y archivos creados en el analisis
+analysis_fname = 'last_analisis.txt'
+analysis_dir_name = '__analysis__'
+filt_dir_name = 'filtered_data'
+norm_dir_name = 'normalized_data'
+xcorr_dir_name = 'cross-correlations'
+# -- Excels
+excel_nt_pd_name = 'stats_vehiculos_PD.xlsx'
+excel_t_pd_name = 'stats_tratados_PD.xlsx'
+excel_nt_pi_name = 'stats_vehiculos_PI.xlsx'
+excel_t_pi_name = 'stats_tratados_PI.xlsx'
+excel_names = [excel_nt_pd_name, excel_t_pd_name, excel_nt_pi_name, excel_t_pi_name]
+# Nombre directorios ratones
+rigth_paw_dirs = ['pata-derecha_no-tratados', 'pata-derecha_tratados'] 
+left_paw_dirs = ['pata-izquierda_no-tratados', 'pata-izquierda_tratados']
 dir_basales = 'basales'; dir_72horas = '72-horas'; dir_2semanas = '2-semanas'
 # Stat headers
 mouse_header = "Raton"
 amplitud_header = "Amplitud mean (uV)"
 latency_header = "Latency (ms)"
 area_header = "Absolute area"
+pearson_header = 'Pearson Correlation'
 # -------------------------------------------------------------------
 # -------------------------------------------------------------------
 
@@ -37,76 +51,133 @@ if custom_path is not None:
 else:
     path = Path(default_path).resolve()
 
-paws_dir_names = [rigth_paw_dir, left_paw_dir]
+paws_dir_names = rigth_paw_dirs + left_paw_dirs
 tgroups = [dir_basales, dir_72horas, dir_2semanas]
-stat_headers = [mouse_header, amplitud_header, latency_header, area_header]
+stat_headers = [mouse_header, amplitud_header, latency_header, area_header, pearson_header]
 
 reset_log = True
 
+def timer(func):
+    """Mide el tiempo que tarda en ejecutarse una funcion en minutos 
+    y segundos
+
+    Args:
+        func: funcion a ejecutar
+    """
+    def f(*a, **ka):
+        t0 = get_time()
+        func(*a,**ka)
+        tf = get_time()
+        total_secs = round(tf-t0, 2)
+        if total_secs < 60:
+            print(f"Elapsed time: {total_secs} s")
+        else: 
+            mins = floor(total_secs/60)
+            secs = int(total_secs - mins*60)
+            print(f"Elapsed time: {mins} min {secs} s")
+    return f
+
+@timer
 def main():
     print(f"[%] Analizando archivos de '{path}'")
+   
+    analysis_path = path/analysis_dir_name
+    if not os.path.exists(analysis_path): os.mkdir(analysis_path)
+    if not os.path.exists(analysis_path/norm_dir_name): os.mkdir(analysis_path/norm_dir_name)
+    if not os.path.exists(analysis_path/filt_dir_name): os.mkdir(analysis_path/filt_dir_name)
+    if not os.path.exists(analysis_path/xcorr_dir_name): os.mkdir(analysis_path/xcorr_dir_name)
+    for excel in excel_names:
+        if os.path.exists(analysis_path/excel): 
+            os.remove(analysis_path/excel)
+    
     log(f" + Analysing '{path}'")
-    analisis = {}
-    if os.path.exists(path/excel_pd_name): os.remove(path/excel_pd_name)
-    if os.path.exists(path/excel_pi_name): os.remove(path/excel_pi_name)
+    
     for ipaw, paw in enumerate(paws_dir_names):
         log(f" => {paw}")
-        analisis[paw] = {}; gcounter = 0
+        gcounter = 0
         for grp in tgroups:
             log(f" -> {grp}")
-            analisis[paw][grp] = {}
             grp_path = path/paw/grp
             files = [name for name in os.listdir(grp_path) if name.endswith('.txt')]
             headers = []
             for i, h in enumerate(stat_headers): 
                 if i == 0: headers.append(h); continue
+                if h == pearson_header:
+                    if grp == dir_basales:
+                        headers.append(h)
+                    continue
                 headers.append(h + " HD")
-                headers.append(h + " HI")
+                headers.append(h + " HI")   
+                
             table = [headers]
             fcounter = 0
             for ifile, fname in enumerate(files):
                 print(f"Analizando => '{fname}'...")
-                t = []; hd = []; hi = []
+                t = []; hd = []; hi = []; txt_headers = [] 
                 with open(grp_path/fname, 'r') as file:
                     reader = csv.reader(file, delimiter='\t')
                     for i, line in enumerate(reader):
-                        if i == 0: continue
+                        if i == 0: txt_headers.append(line); continue
+                        if line[0] == "" or line[1] == "" or line[2] == "": continue
                         t.append(float(line[0])); hd.append(float(line[1])); hi.append(float(line[2]))
-                t_hd, hd, t_hi, hi = filt(t, hd, hi)
+                print("   - Filtrando...")
+                t, hd, hi = filt(t, hd, hi)
+                assert len(t) == len(hd) and len(hd) == len(hi)
+                # Guardamos datos filtrados (quitamos los ultimos 11 ms)
+                save_data(t, hd, hi, analysis_path/filt_dir_name, f"{paw}/{grp}/{(fname.replace('.', '_filt.'))}", headers=txt_headers)
+                print(f"   - Calculando {stat_headers}...")
                 # HD
-                hd_stats = calc_stats(t_hd, hd)
-                plt.plot(t_hd, hd)
+                hd_stats = calc_stats(t, hd)
+                if '-s' in sys.argv:
+                    plt.plot(t, hd)
                 # HI
-                hi_stats = calc_stats(t_hi, hi)
-                plt.plot(t_hi, hi)
+                hi_stats = calc_stats(t, hi)
+                if '-s' in sys.argv:
+                    plt.plot(t, hi)
                 # all
                 stats = [fname]
                 for hd_stat, hi_stat in zip(hd_stats, hi_stats):
                     stats.append(hd_stat)
                     stats.append(hi_stat)
+                if grp == dir_basales:
+                    # Calculamos correlacion de Pearson
+                    print("   - Calculando Coeficinete de Pearson...")
+                    pearson = np.cov(hd,hi)[0][1]/(np.std(hd)*np.std(hi))
+                    stats.append(pearson)
                 table.append(stats)
+                print(f"   - Actualizando excel...")
                 # Updateamos el excel
-                if ipaw == 0:
-                    excel_path = path/excel_pd_name
-                else: 
-                    excel_path = path/excel_pi_name
+                excel_path = analysis_path/excel_names[ipaw]
                 if not os.path.exists(excel_path):
                     copyfile(excel_template, excel_path)
                 wb = openpyxl.load_workbook(excel_path)
                 ws = wb.active
-                letters = ['D', 'E', 'F', 'G', 'H', 'I']
-                offset = 4; stats.pop(0); counter = fcounter + gcounter
+                letters = ['D', 'E', 'F', 'G', 'H', 'I', 'J']
+                offset = 4; counter = fcounter + gcounter
                 for i, stat in enumerate(stats):
-                    cell = letters[i]+str(counter+offset)
+                    if i == 0: continue
+                    cell = letters[i-1]+str(counter+offset)
                     ws[cell] = stat
-                if grp == 'basales':
-                    chart_ws = Workbook.create_sheet(wb, title=f'Correlation-{ifile+1}')
+                if grp == dir_basales:
+                    # Normalizamos la señal
+                    print(f"   - Normalizando la señal...")
+                    # ¿ norm_hd = normalize(np.array(hd)); norm_hi = normalize(np.array(hi)) ?
+                    # assert max(norm_hd) <= 1 and min(norm_hi) >= 0 
                     norm_hd = hd/np.linalg.norm(hd); norm_hi = hi/np.linalg.norm(hi)
-                    xcorr = list(np.correlate(norm_hd, norm_hi, 'full'))
+                    # Guardamos las normalizaciones
+                    save_data(t, norm_hd, norm_hi, analysis_path/norm_dir_name, f"{paw}/{grp}/{(fname.replace('.', '_norm.'))}", headers=txt_headers)
+                    # Realizamos la correlacion cruzada entre hemisferios
+                    print(f"   - Realizando Correlacion Cruzada...")
+                    chart_ws = Workbook.create_sheet(wb, title=f'Correlation-{ifile+1}')
+                    xcorr = list(signal.correlate(norm_hd, norm_hi))
                     chart_ws.append(["Lags", "Cross Correlation"])
-                    # hd y hi pueden tener longitudes distintas segun cortemos ¿Sale bien la crosscorr?
                     lags = signal.correlation_lags(norm_hd.size, norm_hi.size, mode="full")
-                    #lag = lags[np.argmax(correlation)]
+                    # Guardmos la imagen
+                    plt.plot(lags, xcorr)
+                    plt.grid()
+                    plt.xlabel("Lags"); plt.ylabel("Cross Correlation")         
+                    save_graph(analysis_path/xcorr_dir_name, f"{paw}/{grp}/{(fname.replace('.txt', '_xcorr.png'))}")
+                    plt.clf()
                     for lag, val in zip(lags, xcorr):
                         chart_ws.append([lag, val])
                     xvalues = Reference(chart_ws, min_col=1, min_row=2, max_row=len(lags))
@@ -121,13 +192,12 @@ def main():
                 wb.save(path/excel_path)
                 # Argumento para plotear
                 if '-s' in sys.argv:
+                    print(f"   - Mostrando Grafica...")
                     plt.show()
                 fcounter += 3
             gcounter += 1
             log(tabulate(table, headers='firstrow', tablefmt='fancy_grid', numalign='center'))
-    print(f"[%] Se ha creado '{excel_pd_name}'")
-    print(f"[%] Se ha creado '{excel_pi_name}'")
-    print(f"[%] Se ha creado '{analisis_fname}'")
+    print(f"[%] Se ha creado '/{analysis_fname}'")
     print("[%] Fin del analisis")
     
 def log(msg:str):
@@ -135,55 +205,77 @@ def log(msg:str):
     mode = 'ab'
     if reset_log:
         mode = 'wb'; reset_log = False
-    with open(path/analisis_fname, mode) as file:
+    with open(path/analysis_dir_name/analysis_fname, mode) as file:
         file.write((msg+"\n").encode('utf-8'))
+        
+def create_path(dir_base, fname):
+    dirs = fname.split("/")
+    fname = dirs.pop(len(dirs)-1)
+    
+    for dir_ in dirs:
+        if not os.path.exists(dir_base/dir_):
+            os.mkdir(dir_base/dir_)
+        dir_base = dir_base/dir_
+        
+    file_path = dir_base/fname
 
-filt_time = 11 
-def filt(t, hd, hi):
+    return file_path
+
+def save_data(t, hd, hi, dir_base:Path, fname:str, headers:list=None):
+    file_path = create_path(dir_base, fname)
+    
+    with open(file_path, 'w') as file:
+        writer = csv.writer(file, delimiter='\t')
+        if headers is not None: writer.writerow(*headers)
+        for t_val, hd_val, hi_val in zip(t, hd, hi):
+            writer.writerow([t_val, hd_val, hi_val])
+        
+def save_graph(dir_base:Path, fname:str):
+    file_path = create_path(dir_base, fname)
+    plt.savefig(file_path)
+
+def filt(t, hd, hi, filt_time_ms=10):
     end_index_limit = None;
     for i, time in enumerate(t):
-        if time > filt_time:
+        if time >= filt_time_ms:
             end_index_limit = i
-            break
-    end_index_hd = None; changed_polarity = False
-    init_polarity = True if hd[0] >= 0 else False
-    for i, val in enumerate(hd):
-        polarity = True if val >= 0 else False
-        if polarity == init_polarity and changed_polarity:
-            end_index_hd = i; break
-        elif polarity != init_polarity:
-            changed_polarity = True
+            break         
+    return t[end_index_limit:], hd[end_index_limit:], hi[end_index_limit:]    
+
+def normalize(array):
+    if type(array) == list: ...
+    else:
+        # Numpy Array
+        return (array - np.min(array))/(np.max(array)-np.min(array))
     
-    end_index_hi = None; changed_polarity = False
-    init_polarity = True if hi[0] >= 0 else False
-    for i, val in enumerate(hi):
-        polarity = True if val >= 0 else False
-        if polarity == init_polarity and changed_polarity:
-            end_index_hi = i; break
-        elif polarity != init_polarity:
-            changed_polarity = True
-            
-    if t[end_index_hd] > filt_time: end_index_hd = end_index_limit
-    if t[end_index_hi] > filt_time: end_index_hi = end_index_limit
-            
-    return t[end_index_hd:], hd[end_index_hd:], t[end_index_hi:], hi[end_index_hi:]    
-    
-ampl_threshold = 10 # uV
 def calc_stats(t:list, array:list) -> list:
     stats = []
     # Amplitud media
     mean = np.mean(array)
     stats.append(round(mean,8))
     # Latencia
-    max_ = max(array); min_ = min(array)
-    # print(abs(max_) + abs(min_))
-    # if abs(max_) + abs(min_) < ampl_threshold:
-    #     latency = 0
-    # else:
+    # -- Realizamos un primer filtrado (hasta que la señal no pase de crecer/decrecer 
+    # al contrario una vez, no empieza a contar)
+    last_val = None; valid_t = None; valid_array = None; tendency = None
+    for i, val in enumerate(np.abs(array)):
+        if i == 0: last_val = array[0]; continue
+        if last_val > val:
+            tendency_val = 'decreasing'
+        elif last_val < val:
+            tendency_val = 'increasing'
+        else:
+            continue
+        if tendency is None:
+            tendency = tendency_val
+        elif tendency_val != tendency:
+            valid_t = t[i:]; valid_array = array[i:]
+            break
+        last_val = val 
+    max_ = max(valid_array); min_ = min(valid_array)
     if abs(max_) >= abs(min_):
-        latency = t[array.index(max_)]
+        latency = valid_t[valid_array.index(max_)]
     else:
-        latency = t[array.index(min_)]
+        latency = valid_t[valid_array.index(min_)]
     stats.append(round(latency,8))
     # Area absoluta
     area = np.trapz(np.abs(array), dx=abs(t[1]-t[0]))
