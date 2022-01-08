@@ -9,8 +9,9 @@ from pathlib import Path
 from shutil import copyfile
 
 # Dependencies
-from scipy import signal
 import numpy as np
+from scipy import signal
+from scipy.stats import linregress
 from tabulate import tabulate
 import matplotlib.pyplot as plt
 from openpyxl.workbook import Workbook
@@ -141,12 +142,12 @@ def main():
                     stats.append(hi_stat)
                 if grp == dir_basales:
                     # Calculamos correlacion de Pearson
-                    print("   - Calculando Coeficinete de Pearson...")
-                    normalized_hd = normalize(np.array(hd)); normalized_hi = normalize(np.array(hi))
-                    assert max(normalized_hd) <= 1 and min(normalized_hd) >= 0 
-                    pearson = np.cov(normalized_hd,normalized_hi)[0][1]/(np.std(normalized_hd)*np.std(normalized_hi))
-                    # Guardamos las normalizaciones
-                    save_data(t, normalized_hd, normalized_hi, analysis_path/norm_dir_name, f"{paw}/{grp}/{(fname.replace('.', '_norm.'))}", headers=txt_headers)
+                    print("   - Calculando Correlacion de Pearson (R y P)...")
+                    rval, pval = linregress(hd,hi)[2:4]
+                    rval = round(rval, 8); pval = round(pval, 8) 
+                    # Si pval<0.05 significa que el R calculado es suficientemente distinto de 0
+                    # para decir que existe relacion lineal entre las señales
+                    pearson = f"    R={rval} | P={pval}"
                     stats.append(pearson)
                 table.append(stats)
                 print(f"   - Actualizando excel...")
@@ -156,21 +157,28 @@ def main():
                     copyfile(excel_template, excel_path)
                 wb = openpyxl.load_workbook(excel_path)
                 ws = wb.active
-                letters = ['D', 'E', 'F', 'G', 'H', 'I', 'J']
+                letters = ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']
                 offset = 4; counter = fcounter + gcounter
                 for i, stat in enumerate(stats):
                     if i == 0: continue
-                    cell = letters[i-1]+str(counter+offset)
+                    letter = letters[i-1]
+                    cell = letter+str(counter+offset)
+                    if letter == 'J': 
+                        stat = rval
+                        ws[f'K{counter+offset}'] = pval
                     ws[cell] = stat
                 if grp == dir_basales:
-                    # ¿ norm_hd = normalize(np.array(hd)); norm_hi = normalize(np.array(hi)) ?
+                    # Guardamos las normalizaciones del las señales
+                    normalized_hd = normalize(np.array(hd)); normalized_hi = normalize(np.array(hi))
+                    assert max(normalized_hd) <= 1 and min(normalized_hd) >= 0 
+                    save_data(t, normalized_hd, normalized_hi, analysis_path/norm_dir_name, f"{paw}/{grp}/{(fname.replace('.', '_norm.'))}", headers=txt_headers)
                     # Realizamos la correlacion cruzada entre hemisferios
                     print(f"   - Realizando Correlacion Cruzada...")
                     norm_hd = hd/np.linalg.norm(hd); norm_hi = hi/np.linalg.norm(hi)
                     chart_ws = Workbook.create_sheet(wb, title=f'Correlation-{ifile+1}')
-                    xcorr = list(signal.correlate(norm_hd, norm_hi))
+                    xcorr = list(signal.correlate(norm_hd, norm_hi, mode='same'))
                     chart_ws.append(["Lags", "Cross Correlation"])
-                    lags = signal.correlation_lags(norm_hd.size, norm_hi.size, mode="full")
+                    lags = signal.correlation_lags(norm_hi.size, norm_hd.size, mode="same")
                     # Guardmos la imagen
                     plt.plot(lags, xcorr)
                     plt.grid()
@@ -241,11 +249,10 @@ def filt(t, hd, hi, filt_time_ms=10):
             break         
     return t[end_index_limit:], hd[end_index_limit:], hi[end_index_limit:]    
 
-def normalize(array):
-    if type(array) == list: ...
-    else:
-        # Numpy Array
-        return (array - np.min(array))/(np.max(array)-np.min(array))
+def normalize(array_in):
+    array = np.array(array_in)
+    # Numpy Array
+    return (array - np.min(array))/(np.max(array)-np.min(array))
     
 def calc_stats(t:list, array:list) -> list:
     stats = []
