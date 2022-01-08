@@ -168,13 +168,12 @@ def main():
                         ws[f'K{counter+offset}'] = pval
                     ws[cell] = stat
                 if grp == dir_basales:
-                    # Guardamos las normalizaciones del las señales
-                    normalized_hd = normalize(np.array(hd)); normalized_hi = normalize(np.array(hi))
-                    assert max(normalized_hd) <= 1 and min(normalized_hd) >= 0 
-                    save_data(t, normalized_hd, normalized_hi, analysis_path/norm_dir_name, f"{paw}/{grp}/{(fname.replace('.', '_norm.'))}", headers=txt_headers)
                     # Realizamos la correlacion cruzada entre hemisferios
                     print(f"   - Realizando Correlacion Cruzada...")
+                    # Normalizamos los datos en el rango [-1, 1]
                     norm_hd = hd/np.linalg.norm(hd); norm_hi = hi/np.linalg.norm(hi)
+                    assert max(norm_hd) <= 1 and min(norm_hi) >= -1 
+                    save_data(t, norm_hd, norm_hi, analysis_path/norm_dir_name, f"{paw}/{grp}/{(fname.replace('.', '_norm.'))}", headers=txt_headers)
                     chart_ws = Workbook.create_sheet(wb, title=f'Correlation-{ifile+1}')
                     xcorr = list(signal.correlate(norm_hd, norm_hi, mode='same'))
                     chart_ws.append(["Lags", "Cross Correlation"])
@@ -248,11 +247,6 @@ def filt(t, hd, hi, filt_time_ms=10):
             end_index_limit = i
             break         
     return t[end_index_limit:], hd[end_index_limit:], hi[end_index_limit:]    
-
-def normalize(array_in):
-    array = np.array(array_in)
-    # Numpy Array
-    return (array - np.min(array))/(np.max(array)-np.min(array))
     
 def calc_stats(t:list, array:list) -> list:
     stats = []
