@@ -226,23 +226,24 @@ def main():
             copyfile(anova_template, anova_excel_path)
         # Cargamos las hojas excel con las stats calculadas
         index1 = 0; index2 = 1; h_offset = 0
-        if i >= 1:
+        if i > 1:
             index1 = 2; index2 = 3
         nt_excel_name = stats_excel_names[index1]
         t_excel_name = stats_excel_names[index2]
-        print(nt_excel_name, t_excel_name)
         nt_excel_path = analysis_path/nt_excel_name
         t_excel_path = analysis_path/t_excel_name
         if i%2 != 0:
             h_offset = 1
-        refresh_formulas(t_excel_path)
-        refresh_formulas(nt_excel_path)
+        else:
+            refresh_formulas(nt_excel_path)
+            refresh_formulas(t_excel_path)
         nt_excel = openpyxl.load_workbook(nt_excel_path, data_only=True)
         nt_ws = nt_excel['stats']
         t_excel = openpyxl.load_workbook(t_excel_path, data_only=True)
         t_ws = t_excel['stats']
         start = 16; offset = 6
         anova_wb = openpyxl.load_workbook(anova_excel_path)
+        
         # Guardamos los datos en el excel de ANOVA 
         anova_letters = ['F', 'G', 'H']; anova_offset = 5; anova_start = 5
         for j, dep_h in enumerate(dep_variables):
