@@ -19,7 +19,7 @@ from openpyxl.workbook import Workbook
 from openpyxl.chart import ScatterChart, Reference, Series
 import openpyxl
 
-default_path = '../'; stats_template = 'stats_template.xlsx'; anova_template = 'anova_template.xlsx'
+default_path = '../data'; stats_template = 'stats_template.xlsx'; anova_template = 'anova_template.xlsx'
 # ------------------------- Custom Settings -------------------------
 # -------------------------------------------------------------------
 custom_path = None
@@ -356,5 +356,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("[!] Exit")
         exit(1)
-    # except Exception as err:
-    #     print(f"[!] Unexpected Error: {err}")
+    except Exception as err:
+        print(f"[!] Unexpected Error: {err}")
